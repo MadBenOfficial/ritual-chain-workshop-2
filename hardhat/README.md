@@ -1,41 +1,37 @@
-# Ritual Predict — contracts
+# Canopy contracts
 
-The `RitualPredict` market contract, its tests, and the deployment scripts.
-Full architecture and the workshop runbook live in [../README.md](../README.md).
+Hardhat 3 project for the `RitualPredict` contract. The complete architecture and runbook are in the [root README](../README.md).
 
 ## Layout
 
-```
-contracts/
-  RitualPredict.sol          the market: creation, betting, autonomous resolution, payouts
-  RitualPredict.t.sol        Solidity unit tests
-  ritual/RitualChain.sol     canonical Ritual addresses + system contract interfaces
-  mocks/RitualMocks.sol      test-only stand-ins for the precompiles and system contracts
-test/
-  RitualPredict.e2e.ts       end-to-end walkthroughs of the workshop flow
-scripts/
-  block-time.ts              measure the chain's current block time
-  deploy.ts                  deploy + prepay execution fees
-  fund.ts                    top up the prepaid execution balance
-  status.ts                  live state of every market
-  create-demo-market.ts      create the preset market from the CLI
-  export-abi.ts              copy the compiled ABI into the frontend
+```text
+contracts/RitualPredict.sol              market lifecycle and Ritual integrations
+contracts/ritual/RitualChain.sol         canonical Ritual addresses and interfaces
+contracts/test/RitualLocalMocks.sol      local Scheduler, wallet, registry, HTTP, and JQ
+test/RitualPredict.ts                    eight unit/lifecycle tests
+scripts/deploy.ts                        deploy and fund execution on Ritual testnet
+scripts/create-demo-market.ts            create a preset market
+scripts/status.ts                        inspect live markets and schedule state
+scripts/export-abi.ts                    regenerate the frontend ABI
 ```
 
-## Commands
+## Local verification
 
 ```bash
-cp .env.example .env                            # RITUAL_PRIVATE_KEY, funded from the faucet
-
-npx hardhat test                                # 33 Solidity + 2 TypeScript tests
-npx hardhat test solidity                       # Solidity only
-npx hardhat build                               # compile
-
-npx hardhat run scripts/block-time.ts           # measure block time
-npx hardhat run scripts/deploy.ts               # deploy to Ritual Chain
-PREDICT_ADDRESS=0x... npx hardhat run scripts/status.ts
-PREDICT_ADDRESS=0x... npx hardhat run scripts/fund.ts
+pnpm install
+pnpm exec hardhat build
+pnpm exec hardhat test
+pnpm exec tsc --noEmit
 ```
 
-Tests run entirely against mocks — `vm.etch` puts the mock runtime code at the canonical Ritual
-addresses — so no network access or funded account is needed.
+The tests install mock runtime code at Ritual's canonical addresses with the Hardhat test client. They require no RPC, private key, or testnet balance.
+
+## Testnet deployment
+
+```bash
+cp .env.example .env
+# Add a funded RITUAL_PRIVATE_KEY.
+pnpm exec hardhat run scripts/deploy.ts --network ritual
+```
+
+Never commit `.env`. The GitHub token in the workspace is unrelated to the EVM wallet required for deployment.

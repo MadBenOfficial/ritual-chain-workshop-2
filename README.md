@@ -1,108 +1,117 @@
-# Ritual Predict
+# Canopy — self-resolving markets on Ritual Chain
 
-A self-resolving binary prediction market on [Ritual Chain](https://docs.ritualfoundation.org).
+Canopy is an independent extension of Bootcamp 2's prediction-market workshop. A market creator fixes a question, an HTTP oracle, a JQ extraction path, a numeric threshold, and a resolution block. Participants stake native RITUAL on YES or NO. After betting closes, the Ritual Scheduler wakes the contract and the market resolves itself — there is no privileged resolver and no backend cron.
 
-Create a market like _"Will ETH/USD be at least $4,000 when this market resolves?"_, stake native
-RITUAL on YES or NO, and watch it settle itself. When the betting window closes, **nobody presses a
-resolve button and no backend cron job runs**. The Ritual Scheduler wakes the contract at a block
-fixed when the market was created; the contract calls the HTTP precompile to read the configured
-oracle URL, extracts one number with the jq precompile, compares it to the target, and settles.
-Winners then pull their proportional share of the pool.
+This repository is intentionally useful while the public chain is unavailable: the complete contract lifecycle runs locally against Ritual-compatible mocks installed at the canonical system and precompile addresses.
 
----
+![Canopy interface direction](docs/design/canopy-north-star.png)
 
-## Architecture
+## What is different in this fork
 
+- Completed every workshop TODO: market creation, scheduling, executor selection, HTTP response decoding, JQ extraction, retries, resolution, invalidation, payouts, and refunds.
+- Added a creator-defined minimum stake to reduce dust and accidental micro-bets.
+- Required each creator to fund the execution reserve for the three scheduled attempts, preventing free schedule spam against the shared contract balance.
+- Added `cancelUnfundedMarket`: the creator can cancel an abandoned market only before the first stake. A funded market can never be cancelled.
+- Added a permissionless expiry escape hatch so a skipped or unfunded Scheduler job can never lock participant stakes forever.
+- Replaced the starter `Counter` test with eight local market tests, including canonical-address mocks for Scheduler, RitualWallet, TEE registry, HTTP, and JQ.
+- Added Canopy, a responsive React interface with wallet/chain guards, contract reads, real stake transactions when configured, and an explicit local-sample mode when it is not deployed.
+- Added reproducible architecture, design, and verification records.
+
+## How autonomous resolution works
+
+```text
+createMarket
+    │
+    ├─ stores an immutable oracle rule
+    └─ Scheduler.schedule(resolveBlock, 3 attempts)
+                         │
+                         ▼
+                onScheduledResolve
+                         │
+          TEE registry selects HTTP executor
+                         │
+              HTTP 0x0801 fetches JSON
+                         │
+               JQ 0x0803 extracts uint
+                         │
+         compare observed value to target
+              │                     │
+          Resolved              3 failures
+       winner pulls payout      Invalid → refunds
 ```
-                 createMarket()                    ┌──────────────────────────┐
-   user  ─────────────────────────────────────────▶│  RitualPredict.sol       │
-   user  ─────────── bet(id, YES|NO) ─────────────▶│                          │
-                                                   │  markets, pools, stakes  │
-                                     schedule() ◀──┤                          │
-                                                   └──────────────────────────┘
-    ┌─────────────────────────────┐                     ▲              │
-    │ Scheduler  0x56e7…D58B      │  onScheduledResolve │              │ deposit()
-    │ system contract             │─────────────────────┘              ▼
-    │ fires at resolveBlock,      │                        ┌────────────────────────┐
-    │ 3 attempts, 200 blocks apart│                        │ RitualWallet 0x532F…   │
-    └─────────────────────────────┘                        │ prepaid execution fees │
-                                                           └────────────────────────┘
-                        inside that one scheduled transaction:
 
-   TEEServiceRegistry 0x9644…  ──pickServiceByCapability(HTTP_CALL)──▶  executor address
-   HTTP precompile    0x0801   ──GET oracleUrl (in a TEE)───────────▶  demo oracle
-   jq  precompile     0x0803   ──jsonPath, outputType=uint256───────▶  observed value
-                                          │
-                                          ▼
-                        observed ⋈ target  →  Resolved(YES|NO)
-                        read failed 3×     →  Invalid (everyone refunds)
-```
+The HTTP request uses Ritual's 13-field ABI and unwraps the short-running async envelope `(simulatedInput, actualOutput)`. An oracle error is never converted into a NO result. If all attempts fail, or the winning side has no stake, the market becomes refundable.
 
----
+## Run it locally
 
-### Design decisions worth knowing
-
-**Deadlines are block numbers, not timestamps.** The Scheduler fires at a _block_, so betting also
-closes at a _block_. That way "betting is closed" and "the Scheduler woke us" can never disagree,
-whatever the chain's block time does. `createMarket` takes human durations in seconds and converts
-them using the `blockTimeMs` fixed at deployment. Nothing on-chain reads `block.timestamp`.
-
-**On Ritual Chain, `block.timestamp` is Unix milliseconds** (≈`1.786e12`), not seconds — verified
-against the live chain, not assumed. That is a good reason to avoid it entirely, which this contract
-does. Measured block time was ≈195 ms when this was written; run
-`npx hardhat run scripts/block-time.ts` to check it for yourself.
-
-**A failed oracle read is never a NO.** `onScheduledResolve` treats a precompile failure, a non-200
-response, an undecodable envelope, an executor error message, and an unparseable body all as
-_failures_, not as a negative outcome. The response decode happens through an external `try`, so
-malformed bytes surface as a caught failure instead of reverting the execution and rolling back the
-attempt counter.
-
-**Retries are the Scheduler's own mechanism.** `createMarket` books `numCalls = 3` executions
-`frequency = 200` blocks apart in a single `schedule()` call. Attempt 1 lands at `resolveBlock`; if
-it succeeds, the contract `cancel()`s the remainder; if all three fail, the market becomes `Invalid`
-and every stake is refundable. Each attempt re-rolls the TEE executor seed, so one unhealthy
-executor cannot sink a market. The callback is idempotent, so a leftover execution is harmless.
-
-**No executor is hardcoded.** The contract calls
-`TEEServiceRegistry.pickServiceByCapability(HTTP_CALL, true, seed, 8)` at resolution time.
-
-**Payouts are pull-based and loop-free.** `claimWinnings` computes
-`stake × totalPool ÷ winningPool` for the caller only. Integer division leaves sub-wei dust in the
-contract; that is deliberate and negligible.
-
-**Empty winning side → refundable.** Pari-mutuel has no denominator when nobody backed the winning
-answer, so the market records the outcome and observed value, then becomes `Invalid` so everyone
-takes their stake back.
-
-**Resolution parameters are immutable.** `target`, `comparator`, `oracleUrl`, `jsonPath`, and
-`resolveBlock` have no setter. The `ResolutionRuleSet` event records them at creation.
-
----
-
-## Prerequisites
-
-- Node.js 20+ and `pnpm`
-- A wallet with testnet RITUAL from <https://faucet.ritualfoundation.org>
-
-## Setup
+Requirements: Node.js 20+ and pnpm.
 
 ```bash
 cd hardhat
 pnpm install
-cp .env.example .env
+pnpm exec hardhat build
+pnpm exec hardhat test
+pnpm exec tsc --noEmit
+
+cd ../frontend
+pnpm install
+pnpm run build
+pnpm dev
 ```
 
----
+Open `http://127.0.0.1:4173`. With no contract address, Canopy enters an honest `LOCAL SAMPLE` mode: values are illustrative and transaction actions explain what configuration is missing.
 
-## Scope
+## Connect the frontend to a deployment
 
-Intentionally not included: an AMM, an order book, an order-matching engine, governance, a separate
-ERC-20, a centralized resolver, or an upgrade proxy. Staking uses the chain's native asset and the
-betting model is plain pari-mutuel: two running totals and one mapping per side.
+Copy `frontend/.env.example` to `frontend/.env.local` and set:
 
-## Reference
+```bash
+VITE_RITUAL_RPC_URL=https://rpc.ritualfoundation.org
+VITE_PREDICT_ADDRESS=0xYourDeployedContract
+```
 
-- Ritual Chain docs — <https://docs.ritualfoundation.org>
-- dApp skills — <https://github.com/ritual-foundation/ritual-dapp-skills>
-- Explorer — <https://explorer.ritualfoundation.org> · Faucet — <https://faucet.ritualfoundation.org>
+The client uses Ritual Chain ID `1979`, reads `getMarkets()` every five seconds, prompts network switching, and sends regular `bet` contract transactions with the generated ABI.
+
+## Optional Ritual testnet deployment
+
+Deployment needs a separate funded EVM wallet; the GitHub token is not a wallet and cannot sign chain transactions.
+
+```bash
+cd hardhat
+cp .env.example .env
+# Set RITUAL_PRIVATE_KEY in hardhat/.env, then fund it from the Ritual faucet.
+pnpm exec hardhat run scripts/deploy.ts --network ritual
+```
+
+The deploy script measures block time, deploys `RitualPredict`, and deposits the configured execution funding into RitualWallet. No private key was supplied for this submission, so this repository does not claim a deployed address or transaction hash.
+
+## Verified locally
+
+The proof record is in [docs/proof/local-verification.md](docs/proof/local-verification.md). Current checks:
+
+- Solidity compilation: pass
+- Eight contract/lifecycle tests: pass
+- Hardhat TypeScript check: pass
+- Frontend production build: pass
+- Desktop and 390px responsive browser checks: pass, no console errors or horizontal overflow
+- GitHub-account identity scan: performed before push
+
+## Project map
+
+```text
+hardhat/contracts/RitualPredict.sol       market state machine and Ritual calls
+hardhat/contracts/ritual/RitualChain.sol  canonical addresses and interfaces
+hardhat/contracts/test/                   local Ritual-compatible mocks
+hardhat/test/RitualPredict.ts             seven lifecycle tests
+hardhat/scripts/                          deploy, funding, status, and ABI export
+frontend/src/                             Canopy React interface
+.ritual-build/                            Ritual capability projection and checkpoint
+PRODUCT.md / DESIGN.md                    durable product and visual decisions
+docs/proof/                               reproducible build evidence
+```
+
+## Ritual references
+
+- [Ritual documentation](https://docs.ritualfoundation.org)
+- [Ritual explorer](https://explorer.ritualfoundation.org)
+- [Ritual faucet](https://faucet.ritualfoundation.org)
