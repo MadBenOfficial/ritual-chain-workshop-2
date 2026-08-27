@@ -1,6 +1,6 @@
 {
   "phase": "delivery",
-  "status": "verified_locally",
+  "status": "complete",
   "completed": [
     "official_public_fork",
     "isolated_github_identity",
@@ -11,9 +11,7 @@
     "production_build",
     "identity_scan"
   ],
-  "next": [
-    "push"
-  ],
+  "next": [],
   "deployment": {
     "status": "not_attempted",
     "reason": "No wallet private key supplied for account 1"
