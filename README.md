@@ -1,5 +1,9 @@
 # Canopy — self-resolving markets on Ritual Chain
 
+[**Open the live Canopy interface →**](https://madbenofficial.github.io/ritual-chain-workshop-2/)
+
+The GitHub Pages deployment runs in `LOCAL SAMPLE` mode until a Ritual Chain contract address is configured.
+
 Canopy is an independent extension of Bootcamp 2's prediction-market workshop. A market creator fixes a question, an HTTP oracle, a JQ extraction path, a numeric threshold, and a resolution block. Participants stake native RITUAL on YES or NO. After betting closes, the Ritual Scheduler wakes the contract and the market resolves itself — there is no privileged resolver and no backend cron.
 
 This repository is intentionally useful while the public chain is unavailable: the complete contract lifecycle runs locally against Ritual-compatible mocks installed at the canonical system and precompile addresses.
