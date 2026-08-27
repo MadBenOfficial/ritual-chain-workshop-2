@@ -83,8 +83,8 @@ export async function connectRitual() {
 /**
  * Measures average block time from the last `sample` blocks.
  *
- * Ritual Chain reports block timestamps in **milliseconds**, not seconds — and so does
- * `block.timestamp` inside Solidity.
+ * RPC block timestamps are Unix seconds. Several blocks can share one integer
+ * timestamp on a sub-second chain, so sample enough blocks before averaging.
  */
 export async function measureBlockTimeMs(
   publicClient: Awaited<ReturnType<typeof connectRitual>>["publicClient"],
@@ -98,8 +98,8 @@ export async function measureBlockTimeMs(
     publicClient.getBlock({ blockNumber: older }),
   ]);
 
-  const deltaMs = Number(newBlock.timestamp - oldBlock.timestamp);
-  return deltaMs / sample;
+  const deltaSeconds = Number(newBlock.timestamp - oldBlock.timestamp);
+  return (deltaSeconds * 1000) / sample;
 }
 
 export function explorerAddress(address: string): string {

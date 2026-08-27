@@ -8,6 +8,7 @@ export default defineConfig({
       default: {
         version: "0.8.28",
         settings: {
+          viaIR: true,
           optimizer: {
             enabled: true,
             runs: 200,
@@ -17,6 +18,7 @@ export default defineConfig({
       production: {
         version: "0.8.28",
         settings: {
+          viaIR: true,
           optimizer: {
             enabled: true,
             runs: 200,
@@ -37,7 +39,7 @@ export default defineConfig({
       chainType: "l1",
       chainId: 1979,
       url: "https://rpc.ritualfoundation.org",
-      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+      accounts: [configVariable("RITUAL_PRIVATE_KEY")],
     },
   },
 });

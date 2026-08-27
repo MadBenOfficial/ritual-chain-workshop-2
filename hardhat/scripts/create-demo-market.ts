@@ -9,6 +9,7 @@
  *           BETTING_SECONDS, RESOLVE_DELAY_SECONDS
  */
 import { COMPARATOR, DEMO_MARKET } from "./market-presets.ts";
+import { parseEther } from "viem";
 import { connectRitual, explorerTx } from "./ritual.ts";
 
 const address = process.env.PREDICT_ADDRESS;
@@ -36,6 +37,7 @@ const params = {
   oracleUrl,
   jsonPath: process.env.JSON_PATH ?? DEMO_MARKET.jsonPath,
   target: BigInt(process.env.TARGET ?? DEMO_MARKET.target),
+  minimumStake: parseEther(process.env.MINIMUM_STAKE ?? DEMO_MARKET.minimumStake),
   comparator,
   bettingSeconds: BigInt(process.env.BETTING_SECONDS ?? DEMO_MARKET.bettingSeconds),
   resolveDelaySeconds: BigInt(process.env.RESOLVE_DELAY_SECONDS ?? DEMO_MARKET.resolveDelaySeconds),
@@ -58,7 +60,8 @@ console.log(`Oracle:     ${params.oracleUrl}  (jq: ${params.jsonPath})`);
 console.log(`Betting:    ${params.bettingSeconds}s, then resolve after ${params.resolveDelaySeconds}s`);
 console.log("");
 
-const hash = await predict.write.createMarket([params]);
+const creationFunding = await predict.read.MIN_CREATION_FUNDING();
+const hash = await predict.write.createMarket([params], { value: creationFunding });
 const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
 const marketId = await predict.read.marketCount();

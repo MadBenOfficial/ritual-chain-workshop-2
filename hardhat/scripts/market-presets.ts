@@ -21,6 +21,7 @@ export const DEMO_MARKET = {
   oracleUrl: "http://localhost:3000/api/oracle/eth",
   jsonPath: ".price",
   target: 4000,
+  minimumStake: "0.01",
   comparator: "gte",
   bettingSeconds: 180,
   resolveDelaySeconds: 60,

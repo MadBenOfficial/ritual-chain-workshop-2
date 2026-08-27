@@ -72,9 +72,35 @@ interface IRitualWallet {
 }
 
 interface ITEEServiceRegistry {
+    struct NodeInfo {
+        address paymentAddress;
+        address teeAddress;
+        uint8 teeType;
+        bytes publicKey;
+        string endpoint;
+        bytes32 certPubKeyHash;
+        uint8 capability;
+    }
+
+    struct Service {
+        NodeInfo node;
+        bool isValid;
+        bytes32 workloadId;
+    }
+
+    function getCapabilityIndexStatus()
+        external
+        view
+        returns (uint256 cursor, uint256 total, bool initialized, bool finalized);
+
     /// Bounded random executor selection. Returns (teeAddress, found).
     function pickServiceByCapability(uint8 capability, bool checkValidity, uint256 seed, uint256 maxProbes)
         external
         view
         returns (address teeAddress, bool found);
+
+    function getServicesByCapability(uint8 capability, bool checkValidity)
+        external
+        view
+        returns (Service[] memory services);
 }
